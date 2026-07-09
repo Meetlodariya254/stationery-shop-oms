@@ -1,0 +1,12 @@
+{
+  "extends": "../../packages/config-typescript/react.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@stationery-oms/types": ["../../packages/types/src/index.ts"]
+    }
+  },
+  "include": ["src", "electron"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

@@ -1,0 +1,256 @@
+// =============================================================
+// Prisma Schema — B2B Stationery Order Management System
+// =============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Enums ----
+
+enum UserRole {
+  ADMIN
+  CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PACKED
+  DELIVERED
+  CANCELLED
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AddressType {
+  BILLING
+  SHIPPING
+}
+
+// ---- Models ----
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(CUSTOMER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  customer      CustomerProfile?
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+  @@index([userId])
+}
+
+model CustomerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  companyName String
+  gstNumber   String?
+  phone       String
+  remarks     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addresses      Address[]
+  customerPrices CustomerPrice[]
+  orders         Order[]
+
+  @@map("customer_profiles")
+  @@index([userId])
+  @@index([companyName])
+}
+
+model Address {
+  id         String      @id @default(cuid())
+  customerId String
+  type       AddressType
+  street     String
+  city       String
+  state      String
+  pincode    String
+  isDefault  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  customer          CustomerProfile @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  billingOrders     Order[]         @relation("BillingAddress")
+  shippingOrders    Order[]         @relation("ShippingAddress")
+
+  @@map("addresses")
+  @@index([customerId])
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  sku           String        @unique
+  barcode       String?       @unique
+  imageUrl      String?
+  unit          String        @default("PCS")
+  stockQuantity Int           @default(0)
+  status        ProductStatus @default(ACTIVE)
+  categoryId    String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  category       Category        @relation(fields: [categoryId], references: [id])
+  customerPrices CustomerPrice[]
+  orderItems     OrderItem[]
+
+  @@map("products")
+  @@index([categoryId])
+  @@index([sku])
+  @@index([status])
+}
+
+model CustomerPrice {
+  id         String   @id @default(cuid())
+  customerId String
+  productId  String
+  price      Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer CustomerProfile @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
+  @@map("customer_prices")
+  @@index([customerId])
+  @@index([productId])
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  orderNumber           String      @unique
+  customerId            String
+  status                OrderStatus @default(PENDING)
+  subtotal              Decimal     @db.Decimal(12, 2)
+  grandTotal            Decimal     @db.Decimal(12, 2)
+  billingAddressId      String?
+  shippingAddressId     String?
+  
+  // Snapshot of address at time of order (in case address changes later)
+  billingAddressSnapshot  Json?
+  shippingAddressSnapshot Json?
+
+  specialInstructions   String?
+  preferredDeliveryDate DateTime?
+  emailSentAt           DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  // Relations
+  customer        CustomerProfile @relation(fields: [customerId], references: [id])
+  billingAddress  Address?        @relation("BillingAddress", fields: [billingAddressId], references: [id])
+  shippingAddress Address?        @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  items           OrderItem[]
+
+  @@map("orders")
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  productId  String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2)
+  totalPrice Decimal @db.Decimal(12, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+  @@index([orderId])
+  @@index([productId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model PasswordResetOtp {
+  id        String   @id @default(cuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("password_reset_otps")
+  @@index([email])
+}
