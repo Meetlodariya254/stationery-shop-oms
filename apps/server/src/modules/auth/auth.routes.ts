@@ -3,7 +3,7 @@
  */
 
 import { Router } from 'express';
-import { body } from 'express-validator';
+import { body, checkExact } from 'express-validator';
 import { validateRequest } from '../../middleware/validate';
 import { authenticate } from '../../middleware/auth';
 import { authLimiter } from '../../middleware/rateLimiter';
@@ -14,36 +14,71 @@ const router = Router();
 router.post(
   '/login',
   authLimiter,
-  [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-    body('password').notEmpty().withMessage('Password is required'),
-  ],
+  checkExact([
+    body('email')
+      .isString()
+      .withMessage('Email must be a string')
+      .isLength({ min: 5, max: 255 })
+      .withMessage('Email must be between 5 and 255 characters')
+      .isEmail()
+      .withMessage('Valid email format is required'),
+    body('password')
+      .isString()
+      .withMessage('Password must be a string')
+      .isLength({ min: 1, max: 128 })
+      .withMessage('Password must be between 1 and 128 characters'),
+  ]),
   validateRequest,
   authController.login
 );
 
 router.post(
   '/refresh',
-  [body('refreshToken').notEmpty().withMessage('Refresh token is required')],
+  authLimiter,
+  checkExact([
+    body('refreshToken')
+      .isString()
+      .withMessage('Refresh token must be a string')
+      .isLength({ min: 10, max: 2048 })
+      .withMessage('Refresh token must be a valid JWT string'),
+  ]),
   validateRequest,
   authController.refreshToken
 );
 
-router.post('/logout', authenticate, authController.logout);
+router.post(
+  '/logout',
+  authenticate,
+  checkExact([], { locations: ['body', 'query'] }),
+  validateRequest,
+  authController.logout
+);
 
-router.get('/me', authenticate, authController.getMe);
+router.get(
+  '/me',
+  authenticate,
+  checkExact([], { locations: ['body', 'query'] }),
+  validateRequest,
+  authController.getMe
+);
 
 router.post(
   '/change-password',
   authenticate,
-  [
-    body('currentPassword').notEmpty().withMessage('Current password is required'),
+  checkExact([
+    body('currentPassword')
+      .isString()
+      .withMessage('Current password must be a string')
+      .isLength({ min: 1, max: 128 })
+      .withMessage('Current password is required'),
     body('newPassword')
-      .isLength({ min: 8 })
-      .withMessage('New password must be at least 8 characters')
+      .isString()
+      .withMessage('New password must be a string')
+      .isLength({ min: 8, max: 128 })
+      .withMessage('New password must be between 8 and 128 characters')
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
       .withMessage('Password must contain uppercase, lowercase, and a number'),
-  ],
+  ]),
   validateRequest,
   authController.changePassword
 );
@@ -51,10 +86,22 @@ router.post(
 router.put(
   '/profile',
   authenticate,
-  [
-    body('name').optional().notEmpty().withMessage('Name cannot be empty'),
-    body('email').optional().isEmail().normalizeEmail().withMessage('Valid email is required'),
-  ],
+  checkExact([
+    body('name')
+      .optional()
+      .isString()
+      .withMessage('Name must be a string')
+      .isLength({ min: 1, max: 100 })
+      .withMessage('Name must be between 1 and 100 characters'),
+    body('email')
+      .optional()
+      .isString()
+      .withMessage('Email must be a string')
+      .isLength({ min: 5, max: 255 })
+      .withMessage('Email must be between 5 and 255 characters')
+      .isEmail()
+      .withMessage('Valid email is required'),
+  ]),
   validateRequest,
   authController.updateProfile
 );
@@ -62,7 +109,15 @@ router.put(
 router.post(
   '/forgot-password',
   authLimiter,
-  [body('email').isEmail().normalizeEmail().withMessage('Valid email is required')],
+  checkExact([
+    body('email')
+      .isString()
+      .withMessage('Email must be a string')
+      .isLength({ min: 5, max: 255 })
+      .withMessage('Email must be between 5 and 255 characters')
+      .isEmail()
+      .withMessage('Valid email format is required'),
+  ]),
   validateRequest,
   authController.forgotPassword
 );
@@ -70,15 +125,27 @@ router.post(
 router.post(
   '/reset-password',
   authLimiter,
-  [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-    body('otp').notEmpty().withMessage('Verification code is required'),
+  checkExact([
+    body('email')
+      .isString()
+      .withMessage('Email must be a string')
+      .isLength({ min: 5, max: 255 })
+      .withMessage('Email must be between 5 and 255 characters')
+      .isEmail()
+      .withMessage('Valid email format is required'),
+    body('otp')
+      .isString()
+      .withMessage('Verification code must be a string')
+      .isLength({ min: 4, max: 12 })
+      .withMessage('Verification code must be between 4 and 12 characters'),
     body('newPassword')
-      .isLength({ min: 8 })
-      .withMessage('New password must be at least 8 characters')
+      .isString()
+      .withMessage('New password must be a string')
+      .isLength({ min: 8, max: 128 })
+      .withMessage('New password must be between 8 and 128 characters')
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
       .withMessage('Password must contain uppercase, lowercase, and a number'),
-  ],
+  ]),
   validateRequest,
   authController.resetPassword
 );

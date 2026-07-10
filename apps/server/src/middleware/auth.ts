@@ -16,6 +16,20 @@ declare global {
   }
 }
 
+export function authenticateOptional(req: Request, _res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      const payload = verifyAccessToken(token!);
+      req.user = payload;
+    } catch {
+      // Ignore token error for optional check; required auth checks will handle it downstream
+    }
+  }
+  next();
+}
+
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
 

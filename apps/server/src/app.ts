@@ -6,7 +6,8 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { generalLimiter } from './middleware/rateLimiter';
+import { publicLimiter, authenticatedLimiter } from './middleware/rateLimiter';
+import { authenticateOptional } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 
@@ -38,7 +39,9 @@ app.use(cors({
 // ---- General Middleware ----
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(generalLimiter);
+app.use(authenticateOptional);
+app.use(publicLimiter);
+app.use(authenticatedLimiter);
 app.use(requestLogger);
 
 // ---- Health Check ----
