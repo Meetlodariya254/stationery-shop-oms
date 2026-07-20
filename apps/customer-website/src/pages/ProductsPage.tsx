@@ -9,7 +9,11 @@ import toast from 'react-hot-toast';
 type ProductType = NonNullable<ReturnType<typeof useProducts>['data']>['items'][number];
 
 function ProductCard({ product, onAdd }: { product: ProductType; onAdd: (product: ProductType, quantity: number) => void }) {
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState<number | ''>(1);
+
+  const handleDecrease = () => setQuantity((q) => Math.max(1, (typeof q === 'number' ? q : 1) - 1));
+  const handleIncrease = () => setQuantity((q) => (typeof q === 'number' ? q : 0) + 1);
+  const handleBlur = () => { if (quantity === '' || quantity < 1) setQuantity(1); };
 
   return (
     <div className="card p-3 sm:p-4 flex flex-col justify-between hover:shadow-md hover:border-brand-200 transition-all group">
@@ -47,15 +51,26 @@ function ProductCard({ product, onAdd }: { product: ProductType; onAdd: (product
         <div className="flex items-center gap-2">
           <div className="flex items-center border border-gray-200 rounded-lg bg-white overflow-hidden flex-shrink-0 h-9 sm:h-10">
             <button
-              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              onClick={handleDecrease}
               className="w-8 sm:w-9 h-full flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 text-gray-600 transition-colors"
               aria-label="Decrease quantity"
             >
               <Minus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             </button>
-            <span className="w-8 sm:w-9 text-center font-semibold text-xs sm:text-sm text-gray-900">{quantity}</span>
+            <input
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (e.target.value === '') setQuantity('');
+                else if (!isNaN(val)) setQuantity(Math.max(1, val));
+              }}
+              onBlur={handleBlur}
+              className="w-10 sm:w-11 text-center font-semibold text-xs sm:text-sm text-gray-900 border-none p-0 focus:ring-0 [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
+            />
             <button
-              onClick={() => setQuantity((q) => q + 1)}
+              onClick={handleIncrease}
               className="w-8 sm:w-9 h-full flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 text-gray-600 transition-colors"
               aria-label="Increase quantity"
             >
@@ -64,7 +79,8 @@ function ProductCard({ product, onAdd }: { product: ProductType; onAdd: (product
           </div>
           <button
             onClick={() => {
-              onAdd(product, quantity);
+              const qty = typeof quantity === 'number' ? quantity : 1;
+              onAdd(product, qty);
               setQuantity(1); // Reset quantity after adding
             }}
             className="btn-primary flex-1 text-xs sm:text-sm h-9 sm:h-10 active:scale-95 transition-transform shadow-sm flex items-center justify-center gap-1.5 rounded-lg px-2"
@@ -113,6 +129,14 @@ export function ProductsPage() {
   };
 
   const handleAddToCart = (product: ProductType, quantity: number) => {
+    const existingItem = useCartStore.getState().items.find((i) => i.productId === product.id);
+    const requestedTotal = (existingItem?.quantity ?? 0) + quantity;
+
+    if (requestedTotal > product.stockQuantity) {
+      toast.error(`Cannot add. Only ${product.stockQuantity} units available in stock.`);
+      return;
+    }
+
     addItem({
       productId: product.id,
       name: product.name,
@@ -121,6 +145,7 @@ export function ProductsPage() {
       imageUrl: product.imageUrl ?? null,
       price: product.price,
       quantity,
+      stockQuantity: product.stockQuantity,
     });
     toast.success(`${quantity} ${product.unit}(s) of ${product.name} added to cart`);
   };

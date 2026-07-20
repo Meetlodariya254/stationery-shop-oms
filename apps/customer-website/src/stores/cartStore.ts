@@ -14,6 +14,7 @@ export interface CartItem {
   imageUrl?: string | null;
   price: number;
   quantity: number;
+  stockQuantity: number;
 }
 
 interface CartState {

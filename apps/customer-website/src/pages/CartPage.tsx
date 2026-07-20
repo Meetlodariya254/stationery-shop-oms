@@ -1,7 +1,90 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Trash2, Plus, Minus, ShoppingCart, Package } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useCartStore } from '../stores/cartStore';
 import { formatCurrency } from '../lib/utils';
+
+function CartItemQuantity({ item, onUpdate }: { item: any; onUpdate: (id: string, qty: number) => void }) {
+  const [localQty, setLocalQty] = useState<number | ''>(item.quantity);
+
+  useEffect(() => {
+    setLocalQty(item.quantity);
+  }, [item.quantity]);
+
+  const maxStock = item.stockQuantity ?? Infinity;
+
+  const handleDecrease = () => {
+    const newQty = Math.max(1, (typeof localQty === 'number' ? localQty : 1) - 1);
+    setLocalQty(newQty);
+    onUpdate(item.productId, newQty);
+  };
+  
+  const handleIncrease = () => {
+    const newQty = (typeof localQty === 'number' ? localQty : 0) + 1;
+    if (newQty > maxStock) {
+      toast.error(`Only ${maxStock} units available in stock.`);
+      setLocalQty(maxStock);
+      onUpdate(item.productId, maxStock);
+      return;
+    }
+    setLocalQty(newQty);
+    onUpdate(item.productId, newQty);
+  };
+
+  const handleBlur = () => {
+    if (localQty === '' || localQty < 1) {
+      setLocalQty(1);
+      onUpdate(item.productId, 1);
+    } else if (localQty > maxStock) {
+      toast.error(`Only ${maxStock} units available in stock.`);
+      setLocalQty(maxStock);
+      onUpdate(item.productId, maxStock);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleDecrease}
+        className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all bg-white font-bold"
+        aria-label="Decrease quantity"
+      >
+        <Minus className="w-4 h-4 text-gray-600" />
+      </button>
+      <input
+        type="number"
+        min="1"
+        value={localQty}
+        onChange={(e) => {
+          const val = parseInt(e.target.value, 10);
+          if (e.target.value === '') {
+            setLocalQty('');
+          } else if (!isNaN(val)) {
+            const finalVal = Math.max(1, val);
+            if (finalVal > maxStock) {
+              toast.error(`Only ${maxStock} units available in stock.`);
+              setLocalQty(maxStock);
+              onUpdate(item.productId, maxStock);
+            } else {
+              setLocalQty(finalVal);
+              onUpdate(item.productId, finalVal);
+            }
+          }
+        }}
+        onBlur={handleBlur}
+        className="w-12 text-center font-bold text-sm bg-transparent border-none p-0 focus:ring-0 [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <button
+        onClick={handleIncrease}
+        className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all bg-white font-bold"
+        aria-label="Increase quantity"
+      >
+        <Plus className="w-4 h-4 text-gray-600" />
+      </button>
+    </div>
+  );
+}
 
 export function CartPage() {
   const { items, updateQuantity, removeItem, total, itemCount } = useCartStore();
@@ -66,23 +149,7 @@ export function CartPage() {
 
               {/* Bottom row on mobile / Right section on desktop */}
               <div className="flex items-center justify-between sm:justify-end gap-4 pt-2.5 border-t border-gray-100 sm:border-0 sm:pt-0 w-full sm:w-auto">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                    className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all bg-white font-bold"
-                    aria-label="Decrease quantity"
-                  >
-                    <Minus className="w-4 h-4 text-gray-600" />
-                  </button>
-                  <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
-                  <button
-                    onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                    className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all bg-white font-bold"
-                    aria-label="Increase quantity"
-                  >
-                    <Plus className="w-4 h-4 text-gray-600" />
-                  </button>
-                </div>
+                <CartItemQuantity item={item} onUpdate={updateQuantity} />
 
                 <div className="text-right flex items-center sm:block gap-3">
                   <p className="font-bold text-base sm:text-lg text-gray-900">{formatCurrency(item.price * item.quantity)}</p>

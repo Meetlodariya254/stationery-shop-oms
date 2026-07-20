@@ -110,6 +110,7 @@ export function useCreateOrder() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      void queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }

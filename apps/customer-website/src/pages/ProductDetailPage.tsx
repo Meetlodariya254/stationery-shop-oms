@@ -10,11 +10,25 @@ export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: product, isLoading, isError } = useProduct(id!);
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState<number | ''>(1);
   const addItem = useCartStore((s) => s.addItem);
+
+  const handleDecrease = () => setQuantity((q) => Math.max(1, (typeof q === 'number' ? q : 1) - 1));
+  const handleIncrease = () => setQuantity((q) => (typeof q === 'number' ? q : 0) + 1);
+  const handleBlur = () => { if (quantity === '' || quantity < 1) setQuantity(1); };
 
   const handleAddToCart = () => {
     if (!product) return;
+    const qty = typeof quantity === 'number' ? quantity : 1;
+    
+    const existingItem = useCartStore.getState().items.find((i) => i.productId === product.id);
+    const requestedTotal = (existingItem?.quantity ?? 0) + qty;
+
+    if (requestedTotal > product.stockQuantity) {
+      toast.error(`Cannot add. Only ${product.stockQuantity} units available in stock.`);
+      return;
+    }
+
     addItem({
       productId: product.id,
       name: product.name,
@@ -22,7 +36,8 @@ export function ProductDetailPage() {
       unit: product.unit,
       imageUrl: product.imageUrl ?? null,
       price: product.price,
-      quantity,
+      quantity: qty,
+      stockQuantity: product.stockQuantity,
     });
     toast.success(`${product.name} added to cart`);
     navigate('/cart');
@@ -98,15 +113,26 @@ export function ProductDetailPage() {
               <p className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Quantity</p>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  onClick={handleDecrease}
                   className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all bg-white font-bold text-gray-700 shadow-sm"
                   aria-label="Decrease quantity"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
-                <span className="w-14 text-center font-bold text-lg text-gray-900">{quantity}</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={quantity}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (e.target.value === '') setQuantity('');
+                    else if (!isNaN(val)) setQuantity(Math.max(1, val));
+                  }}
+                  onBlur={handleBlur}
+                  className="w-16 text-center font-bold text-lg text-gray-900 border border-gray-200 rounded-xl h-11 sm:h-10 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
+                />
                 <button
-                  onClick={() => setQuantity((q) => q + 1)}
+                  onClick={handleIncrease}
                   className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all bg-white font-bold text-gray-700 shadow-sm"
                   aria-label="Increase quantity"
                 >
@@ -122,7 +148,7 @@ export function ProductDetailPage() {
               className="btn-primary btn-lg w-full py-3.5 text-sm sm:text-base active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2 font-bold"
             >
               <ShoppingCart className="w-5 h-5" />
-              Add to Cart — {formatCurrency(product.price * quantity)}
+              Add to Cart — {formatCurrency(product.price * (typeof quantity === 'number' ? quantity : 1))}
             </button>
             <p className="text-[11px] sm:text-xs text-gray-400 text-center font-medium">
               ✓ {product.stockQuantity} units available in stock right now
