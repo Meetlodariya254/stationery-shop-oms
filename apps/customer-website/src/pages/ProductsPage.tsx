@@ -1,10 +1,81 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, Package, ShoppingCart, Filter } from 'lucide-react';
+import { Search, Package, ShoppingCart, Filter, Minus, Plus } from 'lucide-react';
 import { useProducts, useCategories } from '../hooks/useApi';
 import { useCartStore } from '../stores/cartStore';
 import { formatCurrency } from '../lib/utils';
 import toast from 'react-hot-toast';
+
+type ProductType = NonNullable<ReturnType<typeof useProducts>['data']>['items'][number];
+
+function ProductCard({ product, onAdd }: { product: ProductType; onAdd: (product: ProductType, quantity: number) => void }) {
+  const [quantity, setQuantity] = useState(1);
+
+  return (
+    <div className="card p-3 sm:p-4 flex flex-col justify-between hover:shadow-md hover:border-brand-200 transition-all group">
+      <div>
+        <Link to={`/products/${product.id}`} className="block mb-2.5 sm:mb-3">
+          <div className="aspect-square bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center relative">
+            {product.imageUrl ? (
+              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            ) : (
+              <Package className="w-10 sm:w-12 h-10 sm:h-12 text-gray-200" />
+            )}
+          </div>
+        </Link>
+
+        <span className="text-[10px] sm:text-xs text-brand-600 font-semibold uppercase tracking-wider mb-0.5 block truncate">{product.category.name}</span>
+        <Link to={`/products/${product.id}`}>
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-900 leading-snug hover:text-brand-700 transition-colors line-clamp-2 min-h-[2rem] sm:min-h-[2.5rem]">
+            {product.name}
+          </h3>
+        </Link>
+        <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 mb-2.5 truncate">SKU: {product.sku}</p>
+      </div>
+
+      <div className="mt-auto pt-2 border-t border-gray-50">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-2.5 sm:mb-3 gap-1">
+          <div>
+            <p className="text-base sm:text-xl font-bold text-brand-700 leading-tight">{formatCurrency(product.price)}</p>
+            <p className="text-[10px] sm:text-xs text-gray-400">per {product.unit}</p>
+          </div>
+          <span className="text-[10px] sm:text-xs text-green-600 font-medium bg-green-50 px-1.5 py-0.5 rounded w-fit">
+            {product.stockQuantity} left
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <div className="flex items-center border border-gray-200 rounded-lg bg-white overflow-hidden flex-shrink-0 h-9 sm:h-10">
+            <button
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              className="w-8 sm:w-9 h-full flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 text-gray-600 transition-colors"
+              aria-label="Decrease quantity"
+            >
+              <Minus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            </button>
+            <span className="w-8 sm:w-9 text-center font-semibold text-xs sm:text-sm text-gray-900">{quantity}</span>
+            <button
+              onClick={() => setQuantity((q) => q + 1)}
+              className="w-8 sm:w-9 h-full flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 text-gray-600 transition-colors"
+              aria-label="Increase quantity"
+            >
+              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              onAdd(product, quantity);
+              setQuantity(1); // Reset quantity after adding
+            }}
+            className="btn-primary flex-1 text-xs sm:text-sm h-9 sm:h-10 active:scale-95 transition-transform shadow-sm flex items-center justify-center gap-1.5 rounded-lg px-2"
+          >
+            <ShoppingCart className="w-3.5 h-3.5" /> Add
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -41,7 +112,7 @@ export function ProductsPage() {
     setSearchParams({ ...(search ? { search } : {}), ...(selectedCategory ? { categoryId: selectedCategory } : {}) });
   };
 
-  const handleAddToCart = (product: NonNullable<typeof data>['items'][number]) => {
+  const handleAddToCart = (product: ProductType, quantity: number) => {
     addItem({
       productId: product.id,
       name: product.name,
@@ -49,9 +120,9 @@ export function ProductsPage() {
       unit: product.unit,
       imageUrl: product.imageUrl ?? null,
       price: product.price,
-      quantity: 1,
+      quantity,
     });
-    toast.success(`${product.name} added to cart`);
+    toast.success(`${quantity} ${product.unit}(s) of ${product.name} added to cart`);
   };
 
   return (
@@ -116,45 +187,7 @@ export function ProductsPage() {
           <p className="text-xs sm:text-sm text-gray-500 font-medium">{data?.total} products found</p>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {data?.items.map((product) => (
-              <div key={product.id} className="card p-3 sm:p-4 flex flex-col justify-between hover:shadow-md hover:border-brand-200 transition-all group">
-                <div>
-                  <Link to={`/products/${product.id}`} className="block mb-2.5 sm:mb-3">
-                    <div className="aspect-square bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center relative">
-                      {product.imageUrl ? (
-                        <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                      ) : (
-                        <Package className="w-10 sm:w-12 h-10 sm:h-12 text-gray-200" />
-                      )}
-                    </div>
-                  </Link>
-
-                  <span className="text-[10px] sm:text-xs text-brand-600 font-semibold uppercase tracking-wider mb-0.5 block truncate">{product.category.name}</span>
-                  <Link to={`/products/${product.id}`}>
-                    <h3 className="text-xs sm:text-sm font-semibold text-gray-900 leading-snug hover:text-brand-700 transition-colors line-clamp-2 min-h-[2rem] sm:min-h-[2.5rem]">
-                      {product.name}
-                    </h3>
-                  </Link>
-                  <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 mb-2.5 truncate">SKU: {product.sku}</p>
-                </div>
-
-                <div className="mt-auto pt-2 border-t border-gray-50">
-                  <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-2.5 sm:mb-3 gap-1">
-                    <div>
-                      <p className="text-base sm:text-xl font-bold text-brand-700 leading-tight">{formatCurrency(product.price)}</p>
-                      <p className="text-[10px] sm:text-xs text-gray-400">per {product.unit}</p>
-                    </div>
-                    <span className="text-[10px] sm:text-xs text-green-600 font-medium bg-green-50 px-1.5 py-0.5 rounded w-fit">
-                      {product.stockQuantity} left
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleAddToCart(product)}
-                    className="btn-primary w-full text-xs sm:text-sm py-2 sm:py-2.5 active:scale-95 transition-transform shadow-sm flex items-center justify-center gap-1.5"
-                  >
-                    <ShoppingCart className="w-3.5 h-3.5" /> Add
-                  </button>
-                </div>
-              </div>
+              <ProductCard key={product.id} product={product} onAdd={handleAddToCart} />
             ))}
           </div>
 

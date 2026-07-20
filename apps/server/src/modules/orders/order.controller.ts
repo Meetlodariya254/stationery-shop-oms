@@ -128,66 +128,78 @@ export async function createOrder(req: Request, res: Response, next: NextFunctio
     if (!customer) throw new AppError(404, 'Customer profile not found');
     if (!customer.isActive) throw new AppError(403, 'Your account is currently deactivated');
 
-    // Validate items and get customer-specific prices
-    const orderItems: Array<{
-      productId: string;
-      quantity: number;
-      unitPrice: number;
-      totalPrice: number;
-      productName: string;
-      sku: string;
-    }> = [];
-
-    for (const item of items) {
-      const priceRecord = await prisma.customerPrice.findUnique({
-        where: { customerId_productId: { customerId: customer.id, productId: item.productId } },
-        include: { product: true },
-      });
-
-      if (!priceRecord) {
-        throw new AppError(400, `Product ${item.productId} is not available in your price list`);
-      }
-
-      const unitPrice = parseFloat(priceRecord.price.toString());
-      orderItems.push({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice,
-        totalPrice: unitPrice * item.quantity,
-        productName: priceRecord.product.name,
-        sku: priceRecord.product.sku,
-      });
-    }
-
-    const subtotal = orderItems.reduce((sum, i) => sum + i.totalPrice, 0);
-    const grandTotal = subtotal; // Future: add taxes/discounts
-
     const billingAddr = customer.addresses.find((a) => a.type === 'BILLING');
     const shippingAddr = customer.addresses.find((a) => a.type === 'SHIPPING');
 
-    const order = await prisma.order.create({
-      data: {
-        orderNumber: generateOrderNumber(),
-        customerId: customer.id,
-        status: 'PENDING',
-        subtotal,
-        grandTotal,
-        billingAddressId: billingAddr?.id ?? null,
-        shippingAddressId: shippingAddr?.id ?? null,
-        ...(billingAddr ? { billingAddressSnapshot: { ...billingAddr } } : {}),
-        ...(shippingAddr ? { shippingAddressSnapshot: { ...shippingAddr } } : {}),
-        ...(specialInstructions ? { specialInstructions } : {}),
-        ...(preferredDeliveryDate ? { preferredDeliveryDate: new Date(preferredDeliveryDate) } : {}),
-        items: {
-          create: orderItems.map((i) => ({
-            productId: i.productId,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            totalPrice: i.totalPrice,
-          })),
+    const order = await prisma.$transaction(async (tx) => {
+      // Validate items and get customer-specific prices
+      const orderItems: Array<{
+        productId: string;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+        productName: string;
+        sku: string;
+      }> = [];
+
+      for (const item of items) {
+        const priceRecord = await tx.customerPrice.findUnique({
+          where: { customerId_productId: { customerId: customer.id, productId: item.productId } },
+          include: { product: true },
+        });
+
+        if (!priceRecord) {
+          throw new AppError(400, `Product ${item.productId} is not available in your price list`);
+        }
+
+        if (priceRecord.product.stockQuantity < item.quantity) {
+          throw new AppError(400, `Insufficient stock for ${priceRecord.product.name}. Only ${priceRecord.product.stockQuantity} available.`);
+        }
+
+        // Deduct stock immediately
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stockQuantity: { decrement: item.quantity } },
+        });
+
+        const unitPrice = parseFloat(priceRecord.price.toString());
+        orderItems.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice,
+          totalPrice: unitPrice * item.quantity,
+          productName: priceRecord.product.name,
+          sku: priceRecord.product.sku,
+        });
+      }
+
+      const subtotal = orderItems.reduce((sum, i) => sum + i.totalPrice, 0);
+      const grandTotal = subtotal; // Future: add taxes/discounts
+
+      return tx.order.create({
+        data: {
+          orderNumber: generateOrderNumber(),
+          customerId: customer.id,
+          status: 'PENDING',
+          subtotal,
+          grandTotal,
+          billingAddressId: billingAddr?.id ?? null,
+          shippingAddressId: shippingAddr?.id ?? null,
+          ...(billingAddr ? { billingAddressSnapshot: { ...billingAddr } } : {}),
+          ...(shippingAddr ? { shippingAddressSnapshot: { ...shippingAddr } } : {}),
+          ...(specialInstructions ? { specialInstructions } : {}),
+          ...(preferredDeliveryDate ? { preferredDeliveryDate: new Date(preferredDeliveryDate) } : {}),
+          items: {
+            create: orderItems.map((i) => ({
+              productId: i.productId,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              totalPrice: i.totalPrice,
+            })),
+          },
         },
-      },
-      include: ORDER_INCLUDE,
+        include: ORDER_INCLUDE,
+      });
     });
 
     // Send email notification asynchronously (non-blocking)
@@ -204,15 +216,15 @@ export async function createOrder(req: Request, res: Response, next: NextFunctio
       orderNumber: order.orderNumber,
       orderDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
       ...(customer.gstNumber ? { gstNumber: customer.gstNumber } : {}),
-      items: orderItems.map((i) => ({
-        productName: i.productName,
-        sku: i.sku,
+      items: order.items.map((i) => ({
+        productName: i.product.name,
+        sku: i.product.sku,
         quantity: i.quantity,
-        unitPrice: i.unitPrice,
-        totalPrice: i.totalPrice,
+        unitPrice: parseFloat(i.unitPrice.toString()),
+        totalPrice: parseFloat(i.totalPrice.toString()),
       })),
-      subtotal,
-      grandTotal,
+      subtotal: parseFloat(order.subtotal.toString()),
+      grandTotal: parseFloat(order.grandTotal.toString()),
       ...(specialInstructions ? { specialInstructions } : {}),
       ...(preferredDeliveryDate
         ? { preferredDeliveryDate: new Date(preferredDeliveryDate).toLocaleDateString('en-IN') }
@@ -230,12 +242,44 @@ export async function createOrder(req: Request, res: Response, next: NextFunctio
 export async function updateOrderStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { status } = req.body as { status: string };
-    const order = await prisma.order.update({
-      where: { id: req.params['id'] as string },
-      data: { status: status as never },
-      include: ORDER_INCLUDE,
+    const orderId = req.params['id'] as string;
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true },
+      });
+
+      if (!order) throw new AppError(404, 'Order not found');
+
+      // If cancelling an order that isn't already cancelled, restore stock
+      if (status === 'CANCELLED' && order.status !== 'CANCELLED') {
+        for (const item of order.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stockQuantity: { increment: item.quantity } },
+          });
+        }
+      }
+
+      // If uncancelling an order, deduct stock
+      if (order.status === 'CANCELLED' && status !== 'CANCELLED') {
+        for (const item of order.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stockQuantity: { decrement: item.quantity } },
+          });
+        }
+      }
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: { status: status as never },
+        include: ORDER_INCLUDE,
+      });
     });
-    res.json({ success: true, message: 'Order status updated', data: order });
+
+    res.json({ success: true, message: 'Order status updated', data: updatedOrder });
   } catch (error) {
     next(error);
   }
