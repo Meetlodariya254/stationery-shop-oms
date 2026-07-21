@@ -199,3 +199,24 @@ export function useUpdateOrderStatus() {
     },
   });
 }
+
+// Reports
+export function useSalesReport(params?: { dateFrom?: string | undefined; dateTo?: string | undefined }) {
+  return useQuery<{ summary: { status: string; _count: { id: number }; _sum: { grandTotal: number } }[]; orders: { createdAt: string; grandTotal: number }[] }>({
+    queryKey: ['reports-sales', params],
+    queryFn: async () => {
+      const res = await api.get('/reports/sales', { params });
+      return res.data.data;
+    },
+  });
+}
+
+export function useProductReport() {
+  return useQuery<{ productId: string; productName: string; sku: string; totalQuantitySold: number; totalRevenue: number }[]>({
+    queryKey: ['reports-products'],
+    queryFn: async () => {
+      const res = await api.get('/reports/products');
+      return res.data.data;
+    },
+  });
+}
