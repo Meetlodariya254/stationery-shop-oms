@@ -41,7 +41,11 @@ export function CategoriesPage() {
 
       <div className="card overflow-hidden">
         {isLoading ? (
-          <div className="p-8 flex justify-center"><div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
+          <div className="p-6 space-y-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="skeleton h-12 w-full rounded-lg" />
+            ))}
+          </div>
         ) : (
           <div className="table-container">
             <table className="data-table">
